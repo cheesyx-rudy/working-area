@@ -12,6 +12,10 @@ GEO_BATCH_SIZE = 100
 XRAY_TEST_TIMEOUT = 9
 XRAY_WORKERS = 16
 MIN_VALID_CONFIGS = 5
+PING_TYPE = os.environ.get("XRAY_PING_TYPE", "proxy_get").lower()
+PING_MODE = os.environ.get("XRAY_PING_MODE", "keepalive").lower()
+PING_URL = os.environ.get("XRAY_PING_URL", "https://www.gstatic.com/generate_204")
+PING_TIMEOUT = float(os.environ.get("XRAY_PING_TIMEOUT", "8"))
 TEST_URLS = (
     "https://www.gstatic.com/generate_204",
     "https://cp.cloudflare.com/generate_204",
@@ -320,16 +324,55 @@ def _test_one_with_xray(uri, xray_binary):
                     tail = log_path.read_text(encoding="utf-8", errors="replace")[-240:]
                     return False, "xray-start: " + (tail.strip() or f"SOCKS inbound not ready; exit {process.poll()}")
                 errors = []
-                for url in TEST_URLS:
+                # Selectable probe semantics inspired by common proxy clients:
+                # proxy_get / proxy_head validate a real request through Xray;
+                # tcp checks only direct endpoint reachability; icmp uses system ping.
+                # TCP/ICMP are diagnostics, not proof that the proxy tunnel works.
+                parsed_endpoint = _host_from_uri(uri)
+                if PING_TYPE == "tcp":
                     try:
-                        result = subprocess.run([
+                        ep = urllib.parse.urlsplit(uri.split("#", 1)[0])
+                        if ep.scheme.lower() == "vmess":
+                            obj = _vmess_object(uri)
+                            host, remote_port = str(obj.get("add", "")), int(obj.get("port", 0))
+                        else:
+                            host, remote_port = ep.hostname, ep.port
+                        with socket.create_connection((host, remote_port), timeout=PING_TIMEOUT):
+                            return True, "tcp-reachable (endpoint only)"
+                    except Exception as exc:
+                        return False, f"tcp-probe: {exc}"
+                if PING_TYPE == "icmp":
+                    host = parsed_endpoint
+                    if not host:
+                        return False, "icmp-probe: endpoint host missing"
+                    cmd = ["ping", "-n", "-c", "1", "-W", str(max(1, int(PING_TIMEOUT))), host]
+                    try:
+                        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=PING_TIMEOUT + 2)
+                        return (result.returncode == 0, "icmp-reachable" if result.returncode == 0 else "icmp-unreachable")
+                    except Exception as exc:
+                        return False, f"icmp-probe: {exc}"
+                if PING_TYPE not in {"proxy_get", "proxy_head"}:
+                    return False, f"ping-type: unsupported mode {PING_TYPE}"
+                urls = [PING_URL] if PING_MODE == "keepalive" else [PING_URL, PING_URL]
+                if PING_MODE not in {"keepalive", "double"}:
+                    return False, f"ping-mode: unsupported mode {PING_MODE}"
+                for probe_index, url in enumerate(urls):
+                    try:
+                        curl_args = [
                             "curl", "--silent", "--show-error", "--output", os.devnull,
-                            "--connect-timeout", "3", "--max-time", str(XRAY_TEST_TIMEOUT),
-                            "--socks5-hostname", f"127.0.0.1:{port}", "--write-out", "%{http_code}", url,
-                        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=XRAY_TEST_TIMEOUT + 2)
+                            "--connect-timeout", "3", "--max-time", str(PING_TIMEOUT),
+                            "--socks5-hostname", f"127.0.0.1:{port}", "--write-out", "%{http_code}",
+                        ]
+                        if PING_TYPE == "proxy_head":
+                            curl_args.append("--head")
+                        curl_args.append(url)
+                        result = subprocess.run(curl_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=PING_TIMEOUT + 2)
                         code = result.stdout.strip()
                         if result.returncode == 0 and code.isdigit() and 200 <= int(code) < 500:
-                            return True, f"xray-tunnel-http-{code}"
+                            # double requires both probes to succeed; keepalive uses one probe
+                            if probe_index < len(urls) - 1:
+                                continue
+                            return True, f"xray-tunnel-{PING_TYPE}-http-{code}-{PING_MODE}"
                         errors.append((result.stderr.strip() or f"HTTP {code}" or "curl failed")[-100:])
                     except subprocess.TimeoutExpired:
                         errors.append("HTTP probe timeout")
@@ -584,7 +627,14 @@ def main():
     parser.add_argument("--mode", choices=("fresh", "cleanup"), default="fresh")
     parser.add_argument("--xray-binary", default=os.environ.get("XRAY_BINARY", ""), help="path to Xray-core binary; required for fresh mode")
     parser.add_argument("--xray-workers", type=int, default=XRAY_WORKERS, help="parallel Xray tunnel checks")
+    parser.add_argument("--ping-type", choices=("proxy_get", "proxy_head", "tcp", "icmp"),
+                        default=PING_TYPE, help="probe method: proxy_get/head test the tunnel; tcp/icmp only test endpoint reachability")
+    parser.add_argument("--ping-mode", choices=("keepalive", "double"), default=PING_MODE,
+                        help="one request or two consecutive requests (proxy GET/HEAD only)")
+    parser.add_argument("--ping-url", default=PING_URL, help="HTTP(S) test URL for proxy GET/HEAD")
+    parser.add_argument("--ping-timeout", type=float, default=PING_TIMEOUT, help="probe timeout in seconds")
     args = parser.parse_args()
+    PING_TYPE, PING_MODE, PING_URL, PING_TIMEOUT = args.ping_type, args.ping_mode, args.ping_url, args.ping_timeout
 
     snapshot = BASE_DIR / "parsed_proxies.txt"
     dead_file = BASE_DIR / "dead.txt"
