@@ -1,47 +1,47 @@
 {
   "pipeline": "likvid-strict-subscription",
-  "started_at": "2026-10-11T22:32:19.529958+00:00",
+  "started_at": "2026-10-11T22:55:48.465799+00:00",
   "stages": [
     {
       "name": "collect",
       "input": 0,
-      "output": 380,
+      "output": 311,
       "elapsed_seconds": 0.19
     },
     {
       "name": "filter_unsupported",
-      "input": 380,
-      "output": 380,
-      "elapsed_seconds": 0.01
+      "input": 311,
+      "output": 311,
+      "elapsed_seconds": 0.0
     },
     {
       "name": "normalize",
-      "input": 380,
-      "output": 380,
-      "elapsed_seconds": 0.01
+      "input": 311,
+      "output": 311,
+      "elapsed_seconds": 0.0
     },
     {
       "name": "deduplicate",
-      "input": 380,
-      "output": 290,
+      "input": 311,
+      "output": 311,
       "elapsed_seconds": 0.0
     },
     {
       "name": "cluster_analysis",
-      "input": 290,
-      "output": 290,
+      "input": 311,
+      "output": 311,
       "elapsed_seconds": 0.0
     },
     {
       "name": "xray_probe",
-      "input": 290,
-      "output": 102,
-      "elapsed_seconds": 98.89
+      "input": 311,
+      "output": 124,
+      "elapsed_seconds": 109.24
     },
     {
       "name": "stability_check",
-      "input": 102,
-      "output": 102,
+      "input": 124,
+      "output": 124,
       "elapsed_seconds": 0.0
     }
   ],
@@ -115,13 +115,12 @@
       "count": 12
     }
   ],
-  "accepted": 102,
-  "rejected": 278,
-  "finished_at": "2026-10-11T22:33:58.953205+00:00",
+  "accepted": 124,
+  "rejected": 187,
+  "finished_at": "2026-10-11T22:57:43.689947+00:00",
   "rejection_reasons": {
-    "duplicate URI": 90,
     "xray": 62,
-    "tunnel": 123,
+    "tunnel": 122,
     "xray-config": 3
   }
 }
