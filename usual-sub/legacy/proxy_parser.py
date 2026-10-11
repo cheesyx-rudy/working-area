@@ -19,7 +19,12 @@ ROUTING_DEEPLINK_FILE = BASE_DIR / "routing" / "LIKVID-RU-WHITELIST.DEEPLINK"
 def build_happ_routing_link():
     if not ROUTING_JSON_FILE.exists():
         raise SystemExit(f"Happ routing profile not found: {ROUTING_JSON_FILE}")
-    profile = json.loads(ROUTING_JSON_FILE.read_text(encoding="utf-8"))
+    raw_profile = ROUTING_JSON_FILE.read_text(encoding="utf-8").strip()
+    # Recover from older runs that accidentally wrote the two literal
+    # characters "\\n" instead of a real newline at the end of the file.
+    if raw_profile.endswith(r"\n"):
+        raw_profile = raw_profile[:-2].rstrip()
+    profile = json.loads(raw_profile)
     if not isinstance(profile, dict):
         raise SystemExit("Happ routing profile must be a JSON object")
 
@@ -33,10 +38,10 @@ def build_happ_routing_link():
     link = "happ://routing/onadd/" + encoded
 
     ROUTING_JSON_FILE.write_text(
-        json.dumps(profile, ensure_ascii=False, indent=2) + "\\n",
+        json.dumps(profile, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8"
     )
-    ROUTING_DEEPLINK_FILE.write_text(link + "\\n", encoding="utf-8")
+    ROUTING_DEEPLINK_FILE.write_text(link + "\n", encoding="utf-8")
     return link
 
 URI_RE = re.compile(
