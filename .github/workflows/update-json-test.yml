@@ -1,0 +1,42 @@
+name: Build JSON test config
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: json-test-build
+  cancel-in-progress: false
+
+jobs:
+  build-json-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Build one JSON config
+        run: python usual-sub/json-test/build_json.py
+      - name: Commit JSON test output only
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add usual-sub/json-test/config.json
+          if git diff --cached --quiet; then
+            echo "No JSON changes"
+            exit 0
+          fi
+          git commit -m "Update JSON test config"
+          git pull --rebase origin main
+          git push origin HEAD:main
