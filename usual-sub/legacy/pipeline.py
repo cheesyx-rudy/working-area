@@ -166,6 +166,6 @@ def run(config_path, xray_binary):
 
 if __name__=="__main__":
     ap=argparse.ArgumentParser(); ap.add_argument("--config",default="configs/strict.yaml"); ap.add_argument("--xray-binary",default=os.environ.get("XRAY_BINARY","")); args=ap.parse_args()
-    cp=Path(args.config); cp=cp if cp.is_absolute() else ROOT/cp
+    cp=Path(args.config); cp=cp if cp.is_absolute() or cp.exists() else ROOT/cp
     try: raise SystemExit(run(cp,args.xray_binary))
     except Exception as e: print(f"[PIPELINE:ERROR] {type(e).__name__}: {e}",file=sys.stderr); raise SystemExit(1)
