@@ -10,56 +10,34 @@ MAX_BYTES = 20 * 1024 * 1024
 MAX_CONFIGS = 1000
 GEO_BATCH_SIZE = 100
 
-# Happ routing profile is embedded into the subscription body as documented by Happ.
-# Keep it here so no extra routing files are required in the repository.
+# Happ routing profile source of truth. Keep the JSON file and embedded deeplink
+# synchronized on every subscription build so existing Happ profiles can be
+# overwritten when users refresh the subscription.
+ROUTING_JSON_FILE = BASE_DIR / "routing" / "LIKVID-RU-WHITELIST.JSON"
+ROUTING_DEEPLINK_FILE = BASE_DIR / "routing" / "LIKVID-RU-WHITELIST.DEEPLINK"
+
 def build_happ_routing_link():
-    profile = {
-        "Name": "LIKVID VPN RU + Whitelist",
-        "GlobalProxy": "true",
-        "UseChunkFiles": "true",
-        "RemoteDns": "8.8.8.8",
-        "DomesticDns": "77.88.8.8",
-        "RemoteDNSType": "DoH",
-        "RemoteDNSDomain": "https://8.8.8.8/dns-query",
-        "RemoteDNSIP": "8.8.8.8",
-        "DomesticDNSType": "DoH",
-        "DomesticDNSDomain": "https://77.88.8.8/dns-query",
-        "DomesticDNSIP": "77.88.8.8",
-        # RoscomVPN geofiles contain the whitelist categories used by this profile.
-        "Geoipurl": "https://cdn.jsdelivr.net/gh/hydraponique/roscomvpn-geoip/release/geoip.dat",
-        "Geositeurl": "https://cdn.jsdelivr.net/gh/hydraponique/roscomvpn-geosite/release/geosite.dat",
-        "LastUpdated": str(int(datetime.now(timezone.utc).timestamp())),
-        "DnsHosts": {
-            "lkfl2.nalog.ru": "213.24.64.175",
-            "lknpd.nalog.ru": "213.24.64.181"
-        },
-        "RouteOrder": "block-proxy-direct",
-        "DirectSites": [
-            "geosite:private",
-            "geosite:whitelist"
-        ],
-        "DirectIp": [
-            "geoip:private",
-            "geoip:whitelist"
-        ],
-        "ProxySites": [
-            # Common Russian domains are direct by default; this list forces
-            # known blocked domains through the VPN when the geosite contains them.
-        ],
-        "ProxyIp": [],
-        "BlockSites": [
-            "geosite:win-spy",
-            "geosite:torrent",
-            "geosite:category-ads"
-        ],
-        "BlockIp": [],
-        "DomainStrategy": "IPIfNonMatch",
-        "FakeDNS": "false"
-    }
+    if not ROUTING_JSON_FILE.exists():
+        raise SystemExit(f"Happ routing profile not found: {ROUTING_JSON_FILE}")
+    profile = json.loads(ROUTING_JSON_FILE.read_text(encoding="utf-8"))
+    if not isinstance(profile, dict):
+        raise SystemExit("Happ routing profile must be a JSON object")
+
+    # Force refresh of geo files when a user refreshes the subscription.
+    # Happ itself rate-limits geo file downloads (documented by Happ).
+    profile["LastUpdated"] = str(int(datetime.now(timezone.utc).timestamp()))
+
     encoded = base64.b64encode(
         json.dumps(profile, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     ).decode("ascii")
-    return "happ://routing/onadd/" + encoded
+    link = "happ://routing/onadd/" + encoded
+
+    ROUTING_JSON_FILE.write_text(
+        json.dumps(profile, ensure_ascii=False, indent=2) + "\\n",
+        encoding="utf-8"
+    )
+    ROUTING_DEEPLINK_FILE.write_text(link + "\\n", encoding="utf-8")
+    return link
 
 URI_RE = re.compile(
     r"(?i)\b(?:vless|vmess|trojan|ss|ssr|hysteria2?|hy2|tuic|anytls|socks5?|http)://[^\s<>\"']+"
