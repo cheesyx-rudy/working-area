@@ -1,12 +1,12 @@
 {
   "pipeline": "likvid-strict-subscription",
-  "started_at": "2026-10-11T18:11:26.620223+00:00",
+  "started_at": "2026-10-11T21:02:48.245159+00:00",
   "stages": [
     {
       "name": "collect",
       "input": 0,
       "output": 785,
-      "elapsed_seconds": 7.08
+      "elapsed_seconds": 2.83
     },
     {
       "name": "filter_unsupported",
@@ -35,14 +35,14 @@
     {
       "name": "xray_probe",
       "input": 779,
-      "output": 599,
-      "elapsed_seconds": 292.09
+      "output": 587,
+      "elapsed_seconds": 240.0
     },
     {
       "name": "stability_check",
-      "input": 599,
-      "output": 462,
-      "elapsed_seconds": 265.2
+      "input": 587,
+      "output": 517,
+      "elapsed_seconds": 205.22
     }
   ],
   "clusters": [
@@ -106,16 +106,16 @@
   "stability": {
     "attempts_required": 2,
     "require_all_attempts_passed": true,
-    "input": 599,
-    "passed": 462,
-    "rejected": 137
+    "input": 587,
+    "passed": 517,
+    "rejected": 70
   },
-  "accepted": 462,
-  "rejected": 323,
-  "finished_at": "2026-10-11T18:20:51.332764+00:00",
+  "accepted": 517,
+  "rejected": 268,
+  "finished_at": "2026-10-11T21:10:16.723848+00:00",
   "rejection_reasons": {
     "unsupported ML-KEM config": 6,
-    "tunnel": 237,
+    "tunnel": 182,
     "xray": 80
   }
 }
