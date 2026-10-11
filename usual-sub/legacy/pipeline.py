@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 import requests
 import yaml
 from loguru import logger
-from domain import ProxyURI
+from domain import ProxyURI, ResultTest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "usual-sub" / "legacy"))
