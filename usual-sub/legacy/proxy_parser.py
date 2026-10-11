@@ -353,29 +353,41 @@ def _test_one_with_xray(uri, xray_binary):
                         return False, f"icmp-probe: {exc}"
                 if PING_TYPE not in {"proxy_get", "proxy_head"}:
                     return False, f"ping-type: unsupported mode {PING_TYPE}"
-                urls = [PING_URL] if PING_MODE == "keepalive" else [PING_URL, PING_URL]
                 if PING_MODE not in {"keepalive", "double"}:
                     return False, f"ping-mode: unsupported mode {PING_MODE}"
-                for probe_index, url in enumerate(urls):
-                    try:
-                        curl_args = [
-                            "curl", "--silent", "--show-error", "--output", os.devnull,
-                            "--connect-timeout", "3", "--max-time", str(PING_TIMEOUT),
-                            "--socks5-hostname", f"127.0.0.1:{port}", "--write-out", "%{http_code}",
-                        ]
-                        if PING_TYPE == "proxy_head":
-                            curl_args.append("--head")
-                        curl_args.append(url)
-                        result = subprocess.run(curl_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=PING_TIMEOUT + 2)
-                        code = result.stdout.strip()
-                        if result.returncode == 0 and code.isdigit() and 200 <= int(code) < 500:
-                            # double requires both probes to succeed; keepalive uses one probe
-                            if probe_index < len(urls) - 1:
-                                continue
-                            return True, f"xray-tunnel-{PING_TYPE}-http-{code}-{PING_MODE}"
-                        errors.append((result.stderr.strip() or f"HTTP {code}" or "curl failed")[-100:])
-                    except subprocess.TimeoutExpired:
-                        errors.append("HTTP probe timeout")
+
+                # Run two probes in one curl process. curl's connection cache is
+                # shared between URLs, so keepalive can reuse the established
+                # HTTP/TLS connection instead of accidentally testing two fresh
+                # connections. For the standard generate_204 endpoint, require
+                # a successful 2xx response; 403/404/429 must never mark a node
+                # as healthy merely because an HTTP server answered.
+                probe_count = 2
+                curl_args = [
+                    "curl", "--silent", "--show-error", "--location",
+                    "--output", os.devnull,
+                    "--connect-timeout", "3", "--max-time", str(PING_TIMEOUT),
+                    "--socks5-hostname", f"127.0.0.1:{port}",
+                    "--write-out", "%{http_code}\\n",
+                ]
+                if PING_TYPE == "proxy_head":
+                    curl_args.append("--head")
+                curl_args.extend([PING_URL, PING_URL])
+                try:
+                    result = subprocess.run(
+                        curl_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                        text=True, timeout=(PING_TIMEOUT * probe_count) + 2,
+                    )
+                    codes = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+                    if result.returncode == 0 and len(codes) == probe_count and all(
+                        code.isdigit() and 200 <= int(code) < 300 for code in codes
+                    ):
+                        return True, f"xray-tunnel-{PING_TYPE}-http-{','.join(codes)}-keepalive"
+                    errors.append(
+                        (result.stderr.strip() or f"expected 2 successful 2xx responses, got {codes}")[-160:]
+                    )
+                except subprocess.TimeoutExpired:
+                    errors.append("HTTP keepalive probe timeout")
                 return False, "tunnel: " + "; ".join(errors)
     except subprocess.TimeoutExpired:
         return False, "xray-timeout: config test exceeded timeout"
