@@ -38,7 +38,11 @@ jobs:
           python-version: "3.12"
 
       - name: Install Python dependencies
-        run: python -m pip install --disable-pip-version-check -r requirements.txt
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --upgrade pip
+          python -m pip install --disable-pip-version-check -r requirements.txt
+          python -c "import requests, loguru, pydantic_settings, yaml; print('Python dependencies: OK')"
 
       - name: Test Xray config generation and pipeline
         run: python -m unittest discover -s tests -v
