@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
-import argparse, base64, json, re, socket, ipaddress, urllib.parse, urllib.request, subprocess, tempfile, time, shutil, os, concurrent.futures
+import argparse, base64, json, re, socket, ipaddress, urllib.parse, subprocess, tempfile, time, shutil, os, concurrent.futures
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
+from time import perf_counter
+import requests
+import urllib.request
+from loguru import logger
+from domain import ProxyURI, ResultTest
+from settings import settings
 
 BASE_DIR = Path(__file__).resolve().parent
 SOURCES_FILE = BASE_DIR / "proxy_sources.txt"
@@ -9,13 +15,13 @@ OUTPUT_FILE = BASE_DIR / "proxies.txt"
 MAX_BYTES = 20 * 1024 * 1024
 MAX_CONFIGS = 1000
 GEO_BATCH_SIZE = 100
-XRAY_TEST_TIMEOUT = 9
-XRAY_WORKERS = 16
-MIN_VALID_CONFIGS = 5
-PING_TYPE = os.environ.get("XRAY_PING_TYPE", "proxy_get").lower()
-PING_MODE = os.environ.get("XRAY_PING_MODE", "keepalive").lower()
-PING_URL = os.environ.get("XRAY_PING_URL", "https://www.gstatic.com/generate_204")
-PING_TIMEOUT = float(os.environ.get("XRAY_PING_TIMEOUT", "8"))
+XRAY_TEST_TIMEOUT = settings.test_timeout
+XRAY_WORKERS = settings.workers
+MIN_VALID_CONFIGS = settings.min_valid_configs
+PING_TYPE = settings.ping_type
+PING_MODE = settings.ping_mode
+PING_URL = settings.ping_url
+PING_TIMEOUT = settings.ping_timeout
 EXPECTED_STATUS_CODES = {204}
 TEST_URLS = (
     "https://www.gstatic.com/generate_204",
@@ -47,13 +53,13 @@ def build_happ_routing_link():
     encoded = base64.b64encode(
         json.dumps(profile, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     ).decode("ascii")
-    link = "happ://routing/onadd/" + encoded
+    link = f"happ://routing/onadd/{encoded}"
 
     ROUTING_JSON_FILE.write_text(
-        json.dumps(profile, ensure_ascii=False, indent=2) + "\n",
+        f"{json.dumps(profile, ensure_ascii=False, indent=2)}\n",
         encoding="utf-8"
     )
-    ROUTING_DEEPLINK_FILE.write_text(link + "\n", encoding="utf-8")
+    ROUTING_DEEPLINK_FILE.write_text(f"{link}\n", encoding="utf-8")
     return link
 
 URI_RE = re.compile(
@@ -61,12 +67,20 @@ URI_RE = re.compile(
 )
 
 def fetch(url):
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 kafka-sub-proxy-parser/1.0"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        data = r.read(MAX_BYTES + 1)
-    if len(data) > MAX_BYTES:
-        raise ValueError("source is larger than 20 MiB")
-    return data.decode("utf-8", errors="replace")
+    response = requests.get(url, headers={"User-Agent": "Mozilla/5.0 LIKVID-VPN/1.0"}, timeout=30, stream=True)
+    try:
+        response.raise_for_status()
+        chunks, size = [], 0
+        for chunk in response.iter_content(chunk_size=65536):
+            if not chunk:
+                continue
+            size += len(chunk)
+            if size > MAX_BYTES:
+                raise ValueError("source is larger than 20 MiB")
+            chunks.append(chunk)
+        return b"".join(chunks).decode("utf-8", errors="replace")
+    finally:
+        response.close()
 
 def extract_uris(text, depth=0):
     if depth > 3:
@@ -304,12 +318,12 @@ def _test_one_with_xray(uri, xray_binary):
             config_path.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
             check = subprocess.run([xray_binary, "run", "-test", "-config", str(config_path)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=5)
             if check.returncode != 0:
-                return False, "xray-config: " + (check.stdout.strip()[-240:] or "configuration rejected")
+                return False, f"xray-config: {check.stdout.strip()[-240:] or 'configuration rejected'}"
             log_path = Path(tmp) / "xray.log"
             with log_path.open("wb") as log_file:
                 process = subprocess.Popen([xray_binary, "run", "-config", str(config_path)], stdout=log_file, stderr=subprocess.STDOUT)
                 # Wait for the local SOCKS inbound to become ready instead of
-                # racing the first curl request against Xray startup.
+                # racing the first HTTP request against Xray startup.
                 ready = False
                 ready_deadline = time.monotonic() + 2.5
                 while time.monotonic() < ready_deadline:
@@ -323,7 +337,7 @@ def _test_one_with_xray(uri, xray_binary):
                         time.sleep(0.08)
                 if not ready:
                     tail = log_path.read_text(encoding="utf-8", errors="replace")[-240:]
-                    return False, "xray-start: " + (tail.strip() or f"SOCKS inbound not ready; exit {process.poll()}")
+                    return False, f"xray-start: {tail.strip() or f'SOCKS inbound not ready; exit {process.poll()}'}"
                 errors = []
                 # Selectable probe semantics inspired by common proxy clients:
                 # proxy_get / proxy_head validate a real request through Xray;
@@ -357,39 +371,33 @@ def _test_one_with_xray(uri, xray_binary):
                 if PING_MODE not in {"keepalive", "double"}:
                     return False, f"ping-mode: unsupported mode {PING_MODE}"
 
-                # Run two probes in one curl process. curl's connection cache is
-                # shared between URLs, so keepalive can reuse the established
-                # HTTP/TLS connection instead of accidentally testing two fresh
-                # connections. For the standard generate_204 endpoint, require
-                # a successful 2xx response; 403/404/429 must never mark a node
-                # as healthy merely because an HTTP server answered.
+                # A single requests.Session reuses HTTP connections (KeepAlive).
+                # The SOCKS hostname scheme ensures DNS is resolved by the proxy.
                 probe_count = 2
-                curl_args = [
-                    "curl", "--silent", "--show-error", "--location",
-                    "--output", os.devnull,
-                    "--connect-timeout", "3", "--max-time", str(PING_TIMEOUT),
-                    "--socks5-hostname", f"127.0.0.1:{port}",
-                    "--write-out", "%{http_code}\\n",
-                ]
-                if PING_TYPE == "proxy_head":
-                    curl_args.append("--head")
-                curl_args.extend([PING_URL, PING_URL])
+                proxy_url = f"socks5h://127.0.0.1:{port}"
+                statuses = []
                 try:
-                    result = subprocess.run(
-                        curl_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                        text=True, timeout=(PING_TIMEOUT * probe_count) + 2,
-                    )
-                    codes = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-                    if result.returncode == 0 and len(codes) == probe_count and all(
-                        code.isdigit() and int(code) in EXPECTED_STATUS_CODES for code in codes
-                    ):
-                        return True, f"xray-tunnel-{PING_TYPE}-http-{','.join(codes)}-keepalive"
-                    errors.append(
-                        (result.stderr.strip() or f"expected status {sorted(EXPECTED_STATUS_CODES)}, got {codes}")[-160:]
-                    )
-                except subprocess.TimeoutExpired:
-                    errors.append("HTTP keepalive probe timeout")
-                return False, "tunnel: " + "; ".join(errors)
+                    with requests.Session() as session:
+                        session.trust_env = False
+                        session.proxies.update({"http": proxy_url, "https": proxy_url})
+                        for _ in range(probe_count):
+                            request_method = session.head if PING_TYPE == "proxy_head" else session.get
+                            with request_method(
+                                PING_URL,
+                                timeout=(min(3.0, PING_TIMEOUT), PING_TIMEOUT),
+                                allow_redirects=True,
+                                stream=True,
+                                headers={"User-Agent": "LIKVID-VPN-validator/1.0", "Connection": "keep-alive"},
+                            ) as response:
+                                statuses.append(response.status_code)
+                                # Close response body promptly; Session retains reusable connections when possible.
+                                response.close()
+                    if len(statuses) == probe_count and all(code in EXPECTED_STATUS_CODES for code in statuses):
+                        return True, f"proxy-get-ok; statuses={statuses}; keepalive"
+                    errors.append(f"expected HTTP {sorted(EXPECTED_STATUS_CODES)}, received {statuses}")
+                except requests.RequestException as exc:
+                    errors.append(f"request: {type(exc).__name__}: {exc}"[-160:])
+                return False, f"tunnel: {'; '.join(errors)}"
     except subprocess.TimeoutExpired:
         return False, "xray-timeout: config test exceeded timeout"
     except Exception as exc:
@@ -410,11 +418,9 @@ def validate_with_xray(proxies, xray_binary, workers=XRAY_WORKERS):
     """Keep only configs that Xray can start and that pass a real HTTP probe."""
     if not xray_binary or not Path(xray_binary).exists():
         raise SystemExit("Xray binary not found. Install Xray-core and pass --xray-binary /path/to/xray")
-    if shutil.which("curl") is None:
-        raise SystemExit("curl is required for Xray tunnel validation")
     try:
         version = subprocess.run([xray_binary, "version"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=5)
-        print("[XRAY] " + (version.stdout.strip().splitlines()[0] if version.stdout.strip() else "version unknown"))
+        logger.info("Xray version: {}", version.stdout.strip().splitlines()[0] if version.stdout.strip() else "version unknown")
     except Exception as exc:
         raise SystemExit(f"Unable to execute Xray binary: {exc}")
 
@@ -430,7 +436,7 @@ def validate_with_xray(proxies, xray_binary, workers=XRAY_WORKERS):
                 results[i] = (False, f"validator exception: {exc}")
             completed += 1
             if completed % 25 == 0 or completed == len(proxies):
-                print(f"[XRAY] checked {completed}/{len(proxies)}")
+                logger.info("Xray checked {}/{}", completed, len(proxies))
 
     accepted, rejected, reasons = [], 0, {}
     for uri, result in zip(proxies, results):
@@ -441,9 +447,9 @@ def validate_with_xray(proxies, xray_binary, workers=XRAY_WORKERS):
             rejected += 1
             category = reason.split(":", 1)[0]
             reasons[category] = reasons.get(category, 0) + 1
-    print(f"[XRAY] tunnel validation: {len(accepted)}/{len(proxies)} passed; {rejected} rejected")
+    logger.info("Xray tunnel validation: {}/{} passed; {} rejected", len(accepted), len(proxies), rejected)
     if reasons:
-        print("[XRAY] rejection summary: " + ", ".join(f"{key}={value}" for key, value in sorted(reasons.items())))
+        logger.info("Xray rejection summary: {}", ", ".join(f"{key}={value}" for key, value in sorted(reasons.items())))
     # Fail closed, but don't replace a known-good subscription with an empty
     # or implausibly small result caused by a runner/network outage.
     if len(proxies) >= 20 and len(accepted) < MIN_VALID_CONFIGS:
@@ -527,7 +533,7 @@ def _public_ip_for_host(host):
             except ValueError:
                 continue
     except Exception as exc:
-        print(f"[GEO DNS ERROR] {host}: {exc}")
+        logger.warning("GEO DNS ERROR for {}: {}", host, exc)
     return None
 
 
@@ -553,9 +559,9 @@ def _lookup_countries(ip_addresses):
             for row in rows if isinstance(rows, list) else []:
                 if row.get("status") == "success" and row.get("query") and row.get("country"):
                     result[row["query"]] = (row.get("countryCode", ""), row["country"])
-            print(f"[GEO] looked up {len(batch)} IP addresses")
+            logger.info("GEO looked up {} IP addresses", len(batch))
         except Exception as exc:
-            print(f"[GEO ERROR] batch {start // GEO_BATCH_SIZE + 1}: {exc}")
+            logger.warning("GEO batch {} failed: {}", start // GEO_BATCH_SIZE + 1, exc)
     return result
 
 
@@ -577,9 +583,9 @@ def add_country_labels(proxies):
             flag = "🌐"
         counts[country] = counts.get(country, 0) + 1
         label = f"{flag} Cluster {country}"
-        labelled.append(uri.split("#", 1)[0] + "#" + urllib.parse.quote(label, safe=""))
+        labelled.append(f"{uri.split(chr(35), 1)[0]}#{urllib.parse.quote(label, safe='')}")
     summary = ", ".join(f"{name}: {count}" for name, count in sorted(counts.items()))
-    print(f"[GEO] country distribution: {summary or 'no configs'}")
+    logger.info("GEO country distribution: {}", summary or "no configs")
     return labelled
 
 
@@ -595,7 +601,7 @@ def rename_uri(uri, number):
         label = "🌐 Cluster Unknown"
     label = re.sub(r"\s+#?\d+$", "", label).strip()
     label = f"{label} #{number}"
-    return uri.split("#", 1)[0] + "#" + urllib.parse.quote(label, safe="")
+    return f"{uri.split(chr(35), 1)[0]}#{urllib.parse.quote(label, safe='')}"
 
 def load_dead_numbers():
     dead_file = BASE_DIR / "dead.txt"
@@ -630,7 +636,7 @@ def apply_dead_numbers(proxies, dead_numbers):
     for number, uri in enumerate(proxies, start=1):
         if number in dead_numbers:
             removed += 1
-            print(f"[DEAD] removed proxy #{number}")
+            logger.info("Removed manually marked proxy #{}", number)
             continue
         result.append(uri)
     return result, removed
@@ -663,10 +669,10 @@ def main():
         if not dead_numbers:
             raise SystemExit("dead.txt is empty; add failed Happ proxy numbers first")
         unique = read_snapshot()
-        print(f"[MODE] cleanup: using frozen snapshot ({len(unique)} proxy URLs)")
-        print(f"[DEAD] loaded {len(dead_numbers)} manually marked proxy numbers")
+        logger.info("Cleanup mode: using frozen snapshot ({} proxy URLs)", len(unique))
+        logger.info("Loaded {} manually marked proxy numbers", len(dead_numbers))
         unique, removed = apply_dead_numbers(unique, dead_numbers)
-        print(f"[DEAD] removed {removed} dead proxies")
+        logger.info("Removed {} dead proxies", removed)
     else:
         if not SOURCES_FILE.exists():
             raise SystemExit("proxy_sources.txt not found")
@@ -698,31 +704,31 @@ def main():
                     added += 1
 
                 if source_mlkem:
-                    print(f"[SOURCE] {source} -> {added} new proxy URLs (skipped {source_mlkem} ML-KEM)")
+                    logger.info("Source {} -> {} new proxy URLs (skipped {} ML-KEM)", source, added, source_mlkem)
                 else:
-                    print(f"[SOURCE] {source} -> {added} new proxy URLs")
+                    logger.info("Source {} -> {} new proxy URLs", source, added)
             except Exception as e:
-                print(f"[SOURCE ERROR] {source}: {e}")
+                logger.warning("Source {} failed: {}", source, e)
 
-        print(f"[FILTER] skipped {mlkem_skipped} ML-KEM encryption proxies")
+        logger.info("Skipped {} ML-KEM encryption proxies", mlkem_skipped)
         if not unique:
             raise SystemExit("No proxy URLs extracted; refusing to overwrite the current subscription")
 
         # Validate through the actual Xray core and an HTTP request routed via
         # each temporary local SOCKS tunnel. Unsupported protocols fail closed.
         unique, xray_rejected = validate_with_xray(unique, args.xray_binary, args.xray_workers)
-        print(f"[FILTER] Xray removed {xray_rejected} configs that failed core/tunnel checks")
+        logger.info("Xray removed {} configs that failed core/tunnel checks", xray_rejected)
         if not unique:
             raise SystemExit("No configs passed Xray tunnel validation; existing outputs are preserved")
         if len(unique) > MAX_CONFIGS:
-            print(f"[LIMIT] found {len(unique)} configs; keeping first {MAX_CONFIGS}")
+            logger.info("Found {} configs; keeping first {}", len(unique), MAX_CONFIGS)
             unique = unique[:MAX_CONFIGS]
 
         # Freeze order and country labels together. Cleanup uses this snapshot,
         # so dead.txt numbers stay aligned and no geolocation calls are needed.
         unique = add_country_labels(unique)
         write_snapshot(unique)
-        print(f"[SNAPSHOT] saved {len(unique)} proxy URLs to parsed_proxies.txt")
+        logger.info("Saved {} proxy URLs to parsed_proxies.txt", len(unique))
 
     output = [rename_uri(uri, index) for index, uri in enumerate(unique, start=1)]
 
@@ -739,13 +745,13 @@ def main():
     # Put it after metadata headers and before proxy URIs; ordinary URI extraction
     # ignores happ:// links, while Happ uses it to attach/activate routing.
     happ_routing_link = build_happ_routing_link()
-    result = header + "\n" + happ_routing_link + "\n" + "\n".join(output)
+    result = "\n".join((header, happ_routing_link, *output))
 
     tmp = OUTPUT_FILE.with_suffix(".tmp")
     tmp.write_text(result + ("\n" if output else ""), encoding="utf-8")
     tmp.replace(OUTPUT_FILE)
-    print(f"[TOTAL] {len(output)} unique proxy URLs")
-    print(f"[DONE] wrote {OUTPUT_FILE}")
+    logger.info("Total unique proxy URLs: {}", len(output))
+    logger.info("Wrote {}", OUTPUT_FILE)
 
 if __name__ == "__main__":
     main()
