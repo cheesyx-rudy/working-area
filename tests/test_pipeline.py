@@ -7,6 +7,11 @@ import pipeline
 from domain import ProxyURI, ResultTest
 
 class PipelineTests(unittest.TestCase):
+    def test_pipeline_imports_shared_result_test(self):
+        self.assertIs(pipeline.ResultTest, ResultTest)
+        result = pipeline.ResultTest(reason="test failure")
+        self.assertFalse(result.ok)
+
     def test_yaml_has_xray_get_keepalive(self):
         cfg = pipeline.load_config(ROOT / "configs" / "strict.yaml")
         stages = {s["name"]: s for s in cfg["stages"]}
