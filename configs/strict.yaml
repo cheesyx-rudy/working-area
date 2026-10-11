@@ -37,9 +37,6 @@ stages:
     reject_unsupported_protocols: true
   - name: stability_check
     enabled: true
-    attempts: 2
-    retry_delay_seconds: 0.3
-    workers: 8
     require_all_attempts_passed: true
 outputs:
   working: usual-sub/legacy/parsed_proxies.txt
