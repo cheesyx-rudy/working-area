@@ -1,7 +1,7 @@
 #subscription-userinfo: upload=0; download=0; total=0; expire=2524608000
 #profile-title: LIKVID VPN
 #profile-update-interval: 1
-#announce: вся важная информация в канале @LIKVID_VPN // авторы @rudy_bd @cheesyx // обновлено: 11.10.2026 15:42 | конфигов: 897
+#announce: вся важная информация в канале @LIKVID_VPN // авторы @rudy_bd @cheesyx // обновлено: 11.10.2026 15:52 | конфигов: 897
 vless://2c634977-584e-4e1f-b501-1b70c77a6743@185.141.227.180:2053?encryption=none&fp=firefox&host=dismissaltree.net&path=/api/v1/upload&security=tls&sni=dismissaltree.net&type=xhttp#%F0%9F%87%B3%F0%9F%87%B1%20Cluster%20The%20Netherlands%20%231
 vless://c6e3c24c-ce20-4ad5-8c8c-68cb05890ea8@193.164.149.248:443?encryption=none&fp=firefox&pbk=gS0qvWKumWcOVoAgf8SHt6Sm3tqpBw07c5sA_Clb1hg&security=reality&sni=ru-1-1.unturned-rust-dead.lol&type=tcp#%F0%9F%87%B7%F0%9F%87%BA%20Cluster%20Russia%20%232
 vless://40c12ce6-b1c6-424e-862e-010a4585ff52@188.225.77.143:8468?encryption=none&fp=firefox&path=/xh&pbk=mLNQ8cirYSUCtYa5485RnCPzrmp2OfkI0ENmweDxJQc&security=reality&sid=6ba85179e30d4fc2&sni=ads.x5.ru&type=xhttp#%F0%9F%87%B7%F0%9F%87%BA%20Cluster%20Russia%20%233
