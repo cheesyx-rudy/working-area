@@ -16,6 +16,7 @@ PING_TYPE = os.environ.get("XRAY_PING_TYPE", "proxy_get").lower()
 PING_MODE = os.environ.get("XRAY_PING_MODE", "keepalive").lower()
 PING_URL = os.environ.get("XRAY_PING_URL", "https://www.gstatic.com/generate_204")
 PING_TIMEOUT = float(os.environ.get("XRAY_PING_TIMEOUT", "8"))
+EXPECTED_STATUS_CODES = {204}
 TEST_URLS = (
     "https://www.gstatic.com/generate_204",
     "https://cp.cloudflare.com/generate_204",
@@ -380,11 +381,11 @@ def _test_one_with_xray(uri, xray_binary):
                     )
                     codes = [line.strip() for line in result.stdout.splitlines() if line.strip()]
                     if result.returncode == 0 and len(codes) == probe_count and all(
-                        code.isdigit() and 200 <= int(code) < 300 for code in codes
+                        code.isdigit() and int(code) in EXPECTED_STATUS_CODES for code in codes
                     ):
                         return True, f"xray-tunnel-{PING_TYPE}-http-{','.join(codes)}-keepalive"
                     errors.append(
-                        (result.stderr.strip() or f"expected 2 successful 2xx responses, got {codes}")[-160:]
+                        (result.stderr.strip() or f"expected status {sorted(EXPECTED_STATUS_CODES)}, got {codes}")[-160:]
                     )
                 except subprocess.TimeoutExpired:
                     errors.append("HTTP keepalive probe timeout")
