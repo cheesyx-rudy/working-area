@@ -11,6 +11,8 @@ on:
         options:
           - fresh
           - cleanup
+  schedule:
+    - cron: "30 * * * *"
 
 permissions:
   contents: write
@@ -36,9 +38,9 @@ jobs:
           python-version: "3.12"
 
       - name: Build proxy URL list
-        working-directory: usual-sub
+        working-directory: usual-sub/legacy
         env:
-          UPDATE_MODE: ${{ inputs.mode }}
+          UPDATE_MODE: ${{ github.event_name == 'schedule' && 'fresh' || inputs.mode }}
         run: |
           set -euo pipefail
           python proxy_parser.py --mode "$UPDATE_MODE"
@@ -48,12 +50,12 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add subscription.txt usual-sub/parsed_proxies.txt
+          git add usual-sub/legacy/proxies.txt usual-sub/legacy/parsed_proxies.txt
           if git diff --cached --quiet; then
             echo "No generated changes"
             exit 0
           fi
-          if [ "${{ inputs.mode }}" = "cleanup" ]; then
+          if [ "${{ github.event_name == 'schedule' && 'fresh' || inputs.mode }}" = "cleanup" ]; then
             git commit -m "Remove failed proxy URLs"
           else
             git commit -m "Update proxy URLs"
