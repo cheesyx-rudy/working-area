@@ -623,6 +623,7 @@ def apply_dead_numbers(proxies, dead_numbers):
     return result, removed
 
 def main():
+    global PING_TYPE, PING_MODE, PING_URL, PING_TIMEOUT
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=("fresh", "cleanup"), default="fresh")
     parser.add_argument("--xray-binary", default=os.environ.get("XRAY_BINARY", ""), help="path to Xray-core binary; required for fresh mode")
