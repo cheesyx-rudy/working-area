@@ -1,0 +1,89 @@
+name: Update usual subscription
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Update mode"
+        required: true
+        default: fresh
+        type: choice
+        options:
+          - fresh
+          - cleanup
+  schedule:
+    - cron: "30 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: usual-sub-update
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Test Xray config generation
+        run: python -m unittest discover -s tests -v
+
+      - name: Install latest stable Xray-core
+        if: ${{ github.event_name == 'schedule' || inputs.mode == 'fresh' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_json="$(curl -fsSL --retry 3 https://api.github.com/repos/XTLS/Xray-core/releases/latest)"
+          asset_url="$(python -c 'import json,sys; d=json.load(sys.stdin); a=[x["browser_download_url"] for x in d.get("assets",[]) if x.get("name")=="Xray-linux-64.zip"]; print(a[0] if a else "")' <<< "$release_json")"
+          version="$(python -c 'import json,sys; print(json.load(sys.stdin).get("tag_name", "unknown"))' <<< "$release_json")"
+          if [ -z "$asset_url" ]; then echo "Could not find Xray-linux-64.zip in latest stable release" >&2; exit 1; fi
+          echo "Installing Xray-core $version"
+          curl -fsSL --retry 3 "$asset_url" -o /tmp/xray.zip
+          mkdir -p /tmp/xray-dist
+          unzip -oq /tmp/xray.zip -d /tmp/xray-dist
+          test -f /tmp/xray-dist/xray
+          chmod +x /tmp/xray-dist/xray
+          echo "XRAY_BINARY=/tmp/xray-dist/xray" >> "$GITHUB_ENV"
+          /tmp/xray-dist/xray version
+
+      - name: Build proxy URL list
+        working-directory: usual-sub/legacy
+        env:
+          UPDATE_MODE: ${{ github.event_name == 'schedule' && 'fresh' || inputs.mode }}
+        run: |
+          set -euo pipefail
+          if [ "$UPDATE_MODE" = "fresh" ]; then
+            python proxy_parser.py --mode "$UPDATE_MODE" --xray-binary "$XRAY_BINARY" --xray-workers 16
+          else
+            python proxy_parser.py --mode "$UPDATE_MODE"
+          fi
+
+      - name: Commit generated files
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add usual-sub/legacy/proxies.txt usual-sub/legacy/parsed_proxies.txt usual-sub/legacy/routing/LIKVID-RU-WHITELIST.JSON usual-sub/legacy/routing/LIKVID-RU-WHITELIST.DEEPLINK
+          if git diff --cached --quiet; then
+            echo "No generated changes"
+            exit 0
+          fi
+          if [ "${{ github.event_name == 'schedule' && 'fresh' || inputs.mode }}" = "cleanup" ]; then
+            git commit -m "Remove failed proxy URLs"
+          else
+            git commit -m "Update proxy URLs"
+          fi
+          git pull --rebase origin main
+          git push origin HEAD:main
