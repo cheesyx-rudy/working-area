@@ -10,6 +10,57 @@ MAX_BYTES = 20 * 1024 * 1024
 MAX_CONFIGS = 1000
 GEO_BATCH_SIZE = 100
 
+# Happ routing profile is embedded into the subscription body as documented by Happ.
+# Keep it here so no extra routing files are required in the repository.
+def build_happ_routing_link():
+    profile = {
+        "Name": "LIKVID VPN RU + Whitelist",
+        "GlobalProxy": "true",
+        "UseChunkFiles": "true",
+        "RemoteDns": "8.8.8.8",
+        "DomesticDns": "77.88.8.8",
+        "RemoteDNSType": "DoH",
+        "RemoteDNSDomain": "https://8.8.8.8/dns-query",
+        "RemoteDNSIP": "8.8.8.8",
+        "DomesticDNSType": "DoH",
+        "DomesticDNSDomain": "https://77.88.8.8/dns-query",
+        "DomesticDNSIP": "77.88.8.8",
+        # RoscomVPN geofiles contain the whitelist categories used by this profile.
+        "Geoipurl": "https://cdn.jsdelivr.net/gh/hydraponique/roscomvpn-geoip/release/geoip.dat",
+        "Geositeurl": "https://cdn.jsdelivr.net/gh/hydraponique/roscomvpn-geosite/release/geosite.dat",
+        "LastUpdated": str(int(datetime.now(timezone.utc).timestamp())),
+        "DnsHosts": {
+            "lkfl2.nalog.ru": "213.24.64.175",
+            "lknpd.nalog.ru": "213.24.64.181"
+        },
+        "RouteOrder": "block-proxy-direct",
+        "DirectSites": [
+            "geosite:private",
+            "geosite:whitelist"
+        ],
+        "DirectIp": [
+            "geoip:private",
+            "geoip:whitelist"
+        ],
+        "ProxySites": [
+            # Common Russian domains are direct by default; this list forces
+            # known blocked domains through the VPN when the geosite contains them.
+        ],
+        "ProxyIp": [],
+        "BlockSites": [
+            "geosite:win-spy",
+            "geosite:torrent",
+            "geosite:category-ads"
+        ],
+        "BlockIp": [],
+        "DomainStrategy": "IPIfNonMatch",
+        "FakeDNS": "false"
+    }
+    encoded = base64.b64encode(
+        json.dumps(profile, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    ).decode("ascii")
+    return "happ://routing/onadd/" + encoded
+
 URI_RE = re.compile(
     r"(?i)\b(?:vless|vmess|trojan|ss|ssr|hysteria2?|hy2|tuic|anytls|socks5?|http)://[^\s<>\"']+"
 )
@@ -306,7 +357,11 @@ def main():
         f"#announce: вся важная информация в канале @LIKVID_VPN // авторы @rudy_bd @cheesyx // обновлено: {updated} | конфигов: {len(output)}"
     )
 
-    result = header + "\n" + "\n".join(output)
+    # Happ recognizes this deeplink when it appears in the subscription body.
+    # Put it after metadata headers and before proxy URIs; ordinary URI extraction
+    # ignores happ:// links, while Happ uses it to attach/activate routing.
+    happ_routing_link = build_happ_routing_link()
+    result = header + "\n" + happ_routing_link + "\n" + "\n".join(output)
 
     tmp = OUTPUT_FILE.with_suffix(".tmp")
     tmp.write_text(result + ("\n" if output else ""), encoding="utf-8")
