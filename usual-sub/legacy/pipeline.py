@@ -136,8 +136,60 @@ def run(config_path, xray_binary):
                     print(f"[CLUSTER:FAILED] {len(items)} variants in same cluster failed all probes: {key}")
             records=good
         elif name == "stability_check":
-            # Probe stage retries failed nodes; only nodes with a successful tunnel GET remain.
-            pass
+            # Re-test every accepted node independently. A node that passed the
+            # first stage but is intermittent must not be published just because
+            # one request happened to succeed. With require_all_attempts_passed,
+            # every stability probe must pass.
+            attempts = max(1, int(st.get("attempts", 2)))
+            workers = max(1, int(st.get("workers", 8)))
+            delay = max(0.0, float(st.get("retry_delay_seconds", 0.3)))
+            require_all = bool(st.get("require_all_attempts_passed", True))
+            pending_records = list(records)
+            results_by_uri = {u: [] for u in pending_records}
+            for attempt in range(1, attempts + 1):
+                if attempt > 1 and delay:
+                    time.sleep(delay)
+                with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+                    futures = {pool.submit(legacy._test_one_with_xray, u, xray_binary): u for u in pending_records}
+                    for future in concurrent.futures.as_completed(futures):
+                        uri = futures[future]
+                        try:
+                            result = future.result()
+                        except Exception as exc:
+                            result = (False, f"validator-exception: {type(exc).__name__}: {exc}")
+                        results_by_uri[uri].append(result or (False, "missing validation result"))
+                passed = sum(1 for u in pending_records if results_by_uri[u][-1][0])
+                print(f"[STABILITY] attempt {attempt}/{attempts}: {passed}/{len(pending_records)} passed")
+                if not require_all:
+                    pending_records = [u for u in pending_records if not any(ok for ok, _ in results_by_uri[u])]
+                else:
+                    pending_records = [u for u in pending_records if all(ok for ok, _ in results_by_uri[u])]
+                if not pending_records:
+                    break
+            stable = []
+            failed_stability = []
+            for uri in records:
+                checks = results_by_uri[uri]
+                ok_values = [ok for ok, _ in checks]
+                passed = all(ok_values) if require_all else any(ok_values)
+                if passed and (not require_all or len(checks) == attempts):
+                    stable.append(uri)
+                else:
+                    failures = [reason for ok, reason in checks if not ok]
+                    reason = failures[-1] if failures else "stability-attempts-incomplete"
+                    item = {"uri": uri, "stage": name, "reason": reason,
+                            "attempts": len(checks), "passed_attempts": sum(ok_values),
+                            "cluster": cluster_key(uri)}
+                    rejected.append(item)
+                    failed_stability.append(item)
+            report["stability"] = {
+                "attempts_required": attempts,
+                "require_all_attempts_passed": require_all,
+                "input": len(records),
+                "passed": len(stable),
+                "rejected": len(failed_stability),
+            }
+            records = stable
         report["stages"].append({"name":name,"input":before,"output":len(records),"elapsed_seconds":round(time.monotonic()-t0,2)})
         print(f"[STAGE] {name}: {before} -> {len(records)}")
     if not any(s["name"]=="collect" for s in enabled): raise ValueError("Pipeline requires collect stage")

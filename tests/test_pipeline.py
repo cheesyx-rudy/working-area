@@ -12,6 +12,8 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(stages["xray_probe"]["core"], "xray")
         self.assertEqual(stages["xray_probe"]["mode"], "proxy_get")
         self.assertEqual(stages["xray_probe"]["request_mode"], "keepalive")
+        self.assertEqual(stages["stability_check"]["attempts"], 2)
+        self.assertTrue(stages["stability_check"]["require_all_attempts_passed"])
 
     def test_cluster_key_groups_parameter_variants_same_endpoint(self):
         a = "vless://11111111-1111-4111-8111-111111111111@example.com:443?security=reality&type=tcp&pbk=one&sni=a.example"
