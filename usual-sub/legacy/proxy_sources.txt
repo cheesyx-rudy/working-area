@@ -1,0 +1,3 @@
+https://hub.mos.ru/akres/vpn/-/raw/main/bwl
+https://hub.mos.ru/akres/vpn/-/raw/main/all
+https://raw.githubusercontent.com/kafka-def/v2configs-sub/refs/heads/main/subscription.txt

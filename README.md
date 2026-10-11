@@ -1,1 +1,122 @@
-test
+# 🟡 LIKVID VPN
+
+**Бесплатная агрегированная подписка с прокси-конфигурациями.**
+
+Парсер собирает конфигурации из открытых источников, удаляет дубликаты и формирует единый список для импорта в совместимые VPN-клиенты.
+
+## 📦 Подписки
+
+### Основная подписка — GitHub
+
+Список прокси-конфигураций в URI-формате. Подписка формируется парсером и обновляется через GitHub Actions.
+
+**Ссылка на подписку:**
+
+```text
+https://raw.githubusercontent.com/cheesyx-rudy/LIKVID-VPN/refs/heads/main/usual-sub/legacy/proxies.txt
+```
+
+[Открыть подписку](https://raw.githubusercontent.com/cheesyx-rudy/LIKVID-VPN/refs/heads/main/usual-sub/legacy/proxies.txt)
+
+### Дополнительная подписка — MosHub
+
+Дополнительная подписка, размещённая на MosHub и предназначенная для случаев, когда доступ к обычным ресурсам GitHub ограничен, но MosHub доступен через действующие белые списки. Частота обновления конфигураций зависит от запуска парсера и может быть ниже, чем у основной подписки.
+
+**Ссылка на подписку:**
+
+```text
+https://hub.mos.ru/cheesyx/cheesyx-rudy/raw/main/usual-sub/proxies.txt
+```
+
+[Открыть подписку на MosHub](https://hub.mos.ru/cheesyx/cheesyx-rudy/raw/main/usual-sub/proxies.txt)
+
+> Это две отдельные ссылки на подписки. Дополнительная подписка на MosHub сохранена; её адрес относится к размещённому там проекту и не меняется из-за переименования этого GitHub-репозитория.
+
+## 🧪 Тестовый JSON (только GitHub)
+
+Отдельный экспериментальный sing-box JSON с балансировщиком обновляется собственным workflow и не меняет обычную подписку.
+
+Файл: `usual-sub/json-test/config.json`  
+Raw URL: `https://raw.githubusercontent.com/cheesyx-rudy/LIKVID-VPN/main/usual-sub/json-test/config.json`
+
+Для подробностей см. [`usual-sub/json-test/README.md`](usual-sub/json-test/README.md). JSON предназначен только для клиентов, совместимых с sing-box config.
+
+## ⚙️ Как это работает
+
+1. Парсер получает конфигурации из источников, перечисленных в `usual-sub/legacy/proxy_sources.txt`.
+2. Извлекает поддерживаемые URI, удаляет дубликаты и отфильтровывает некоторые несовместимые конфигурации.
+3. Сохраняет снимок в `usual-sub/legacy/parsed_proxies.txt`, чтобы режим очистки мог использовать тот же список.
+4. Формирует итоговую подписку `usual-sub/legacy/proxies.txt`.
+
+Для ручного запуска используется GitHub Actions. В workflow также настроен запуск по расписанию; доступны режимы `fresh` и `cleanup`.
+
+- `fresh` — заново получить конфигурации из источников и сформировать новый список.
+- `cleanup` — удалить номера конфигураций, перечисленные в `usual-sub/legacy/dead.txt`, используя сохранённый снимок без повторной загрузки источников.
+
+## 🔌 Поддерживаемые URI
+
+Парсер умеет извлекать ссылки следующих типов, если они присутствуют в источниках:
+
+- VLESS
+- VMess
+- Trojan
+- Shadowsocks (`ss`)
+- ShadowsocksR (`ssr`)
+- Hysteria / Hysteria2
+- TUIC
+- AnyTLS
+- SOCKS / SOCKS5
+- HTTP
+
+Поддержка конкретной ссылки зависит также от VPN-клиента и его версии. Наличие ссылки в подписке не гарантирует, что сервер работает.
+
+## 📱 Клиенты
+
+Используйте клиент, который поддерживает нужные вам типы URI. Загружайте приложения только из официальных источников.
+
+### Windows / macOS / Linux
+
+- [v2rayN — загрузки и исходный код](https://github.com/2dust/v2rayN/releases)
+- [Hiddify — загрузки и исходный код](https://github.com/hiddify/hiddify-app/releases)
+
+### Android
+
+- [v2rayNG — загрузки и исходный код](https://github.com/2dust/v2rayNG/releases)
+- [Hiddify — загрузки и исходный код](https://github.com/hiddify/hiddify-app/releases)
+- [NekoBox for Android — проект Starifly](https://github.com/starifly/NekoBoxForAndroid)
+
+### iOS
+
+- [Hiddify — загрузки и исходный код](https://github.com/hiddify/hiddify-app/releases)
+
+> Не скачивайте приложения из случайных APK/EXE-каталогов и сторонних сайтов.
+
+## ⚠️ Важно
+
+- Конфигурации собираются из сторонних открытых источников.
+- Мы не являемся владельцами всех размещённых конфигураций и не гарантируем работоспособность каждого узла.
+- Конфигурации могут перестать работать без предупреждения.
+- Разные клиенты могут поддерживать разные протоколы и параметры.
+- Если конфигурация не подключается, попробуйте другой узел или совместимый клиент.
+
+## 👥 Проект и контакты
+
+**Проект:** LIKVID VPN  
+**Telegram-канал:** [@LIKVID_VPN](https://t.me/LIKVID_VPN)  
+**GitHub-репозиторий:** [cheesyx-rudy/LIKVID-VPN](https://github.com/cheesyx-rudy/LIKVID-VPN)
+
+## 📄 Лицензия
+
+Код проекта распространяется согласно лицензии, указанной в репозитории.
+
+Конфигурации, поступающие из сторонних источников, не являются собственностью проекта.
+
+---
+
+<div align="center">
+
+### ⭐ Если проект оказался полезен — поставьте звезду репозиторию
+
+[GitHub](https://github.com/cheesyx-rudy/LIKVID-VPN) · [Telegram](https://t.me/LIKVID_VPN)
+
+</div>
