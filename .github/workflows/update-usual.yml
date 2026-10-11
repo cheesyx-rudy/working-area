@@ -37,7 +37,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Test Xray config generation
+      - name: Install Python dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+
+      - name: Test Xray config generation and pipeline
         run: python -m unittest discover -s tests -v
 
       - name: Install latest stable Xray-core
@@ -65,7 +68,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$UPDATE_MODE" = "fresh" ]; then
-            python proxy_parser.py --mode "$UPDATE_MODE" --xray-binary "$XRAY_BINARY" --xray-workers 16
+            python pipeline.py --config ../../configs/strict.yaml --xray-binary "$XRAY_BINARY"
           else
             python proxy_parser.py --mode "$UPDATE_MODE"
           fi
@@ -75,7 +78,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add usual-sub/legacy/proxies.txt usual-sub/legacy/parsed_proxies.txt usual-sub/legacy/routing/LIKVID-RU-WHITELIST.JSON usual-sub/legacy/routing/LIKVID-RU-WHITELIST.DEEPLINK
+          git add usual-sub/legacy/proxies.txt usual-sub/legacy/parsed_proxies.txt usual-sub/legacy/rejected_proxies.txt usual-sub/legacy/validation_report.json usual-sub/legacy/routing/LIKVID-RU-WHITELIST.JSON usual-sub/legacy/routing/LIKVID-RU-WHITELIST.DEEPLINK
           if git diff --cached --quiet; then
             echo "No generated changes"
             exit 0
