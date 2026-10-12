@@ -1,126 +1,100 @@
 {
   "pipeline": "likvid-strict-subscription",
-  "started_at": "2026-10-12T00:42:05.094799+00:00",
+  "started_at": "2026-10-12T07:53:44.467931+00:00",
   "stages": [
     {
       "name": "collect",
       "input": 0,
-      "output": 311,
-      "elapsed_seconds": 0.33
+      "output": 836,
+      "elapsed_seconds": 0.21
     },
     {
       "name": "filter_unsupported",
-      "input": 311,
-      "output": 311,
+      "input": 836,
+      "output": 836,
       "elapsed_seconds": 0.01
     },
     {
       "name": "normalize",
-      "input": 311,
-      "output": 311,
+      "input": 836,
+      "output": 836,
       "elapsed_seconds": 0.01
     },
     {
       "name": "deduplicate",
-      "input": 311,
-      "output": 311,
+      "input": 836,
+      "output": 836,
       "elapsed_seconds": 0.0
     },
     {
       "name": "cluster_analysis",
-      "input": 311,
-      "output": 311,
+      "input": 836,
+      "output": 836,
       "elapsed_seconds": 0.0
     },
     {
       "name": "xray_probe",
-      "input": 311,
-      "output": 123,
-      "elapsed_seconds": 95.76
+      "input": 836,
+      "output": 685,
+      "elapsed_seconds": 275.56
     },
     {
       "name": "stability_check",
-      "input": 123,
-      "output": 123,
+      "input": 685,
+      "output": 685,
       "elapsed_seconds": 0.0
     }
   ],
   "clusters": [
     {
-      "key": "vless|79.174.92.222|443|grpc|reality",
-      "count": 4
-    },
-    {
-      "key": "vless|90.156.218.163|443|raw|reality",
-      "count": 17
-    },
-    {
-      "key": "vless|90.156.218.163|443|tcp|reality",
-      "count": 32
-    },
-    {
-      "key": "vless|91.215.43.248|443|ws|tls",
-      "count": 6
-    },
-    {
-      "key": "vless|217.149.30.73|8443|raw|reality",
-      "count": 5
-    },
-    {
-      "key": "ss|57.131.48.45|8388|tcp|none",
+      "key": "vless|188.225.77.178|443|grpc|reality",
       "count": 3
     },
     {
-      "key": "hysteria2|185.156.44.99|443|tcp|none",
-      "count": 4
-    },
-    {
-      "key": "vless|185.86.145.183|443|ws|tls",
-      "count": 6
-    },
-    {
-      "key": "vless|cosmo-pulse.ru|443|ws|tls",
+      "key": "vless|185.141.227.180|2053|xhttp|tls",
       "count": 3
     },
     {
-      "key": "vless|nl.alpheratzz.org|8443|tcp|tls",
-      "count": 20
+      "key": "vless|151.236.114.253|443|tcp|reality",
+      "count": 3
     },
     {
       "key": "vless|196.240.125.5|8443|tcp|tls",
-      "count": 9
+      "count": 3
     },
     {
       "key": "vless|196.240.125.251|8443|tcp|tls",
-      "count": 5
-    },
-    {
-      "key": "vless|196.240.125.251|8443|raw|tls",
       "count": 3
     },
     {
-      "key": "vless|46.243.235.246|7449|raw|reality",
+      "key": "vless|89.169.53.176|4443|tcp|reality",
+      "count": 4
+    },
+    {
+      "key": "vless|107.181.151.39|443|tcp|reality",
       "count": 10
     },
     {
-      "key": "vless|84.23.52.65|443|ws|tls",
+      "key": "vless|107.181.151.241|443|tcp|reality",
+      "count": 9
+    },
+    {
+      "key": "vless|31.77.151.160|20324|tcp|reality",
       "count": 3
     },
     {
-      "key": "vless|46.243.232.22|8443|ws|tls",
-      "count": 3
+      "key": "vless|45.81.33.194|443|tcp|reality",
+      "count": 4
     },
     {
-      "key": "vless|151.101.173.16|443|xhttp|tls",
-      "count": 12
+      "key": "vless|116.204.164.27|7443|ws|tls",
+      "count": 4
     }
   ],
-  "accepted": 123,
-  "rejected": 188,
-  "finished_at": "2026-10-12T00:43:42.990702+00:00",
+  "accepted": 685,
+  "rejected": 151,
+  "finished_at": "2026-10-12T07:58:20.847549+00:00",
   "rejection_reasons": {
-    "xray": 62,
-    "tunnel": 123,
-    "xray-config": 3
+    "tunnel": 151
   }
 }
