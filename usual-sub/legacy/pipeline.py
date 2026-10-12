@@ -13,6 +13,9 @@ from domain import ProxyURI, ResultTest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "usual-sub" / "legacy"))
 import proxy_parser as legacy
+from normalizer import deduplicate_semantic
+from xray_manager import resolve_binary
+from modules.registry import discover as discover_plugins
 
 
 def load_config(path):
@@ -21,7 +24,7 @@ def load_config(path):
     if not isinstance(cfg, dict) or not isinstance(cfg.get("stages"), list):
         raise ValueError("YAML must contain a root mapping and stages list")
     names = [s.get("name") for s in cfg["stages"] if s.get("enabled", True)]
-    allowed = {"collect", "filter_unsupported", "normalize", "deduplicate", "cluster_analysis", "xray_probe", "stability_check"}
+    allowed = {"collect", "filter_unsupported", "normalize", "deduplicate", "cluster_analysis", "xray_probe", "stability_check", "telegram_site_check"} | set(discover_plugins())
     unknown = set(names) - allowed
     if unknown:
         raise ValueError(f"Unknown stage(s): {', '.join(sorted(unknown))}")
@@ -151,15 +154,18 @@ def run(config_path, xray_binary):
         elif name == "normalize":
             records = [ProxyURI.parse(uri.raw.strip()) for uri in records if uri.raw.strip()]
         elif name == "deduplicate":
-            seen=set(); keep=[]
-            for uri in records:
-                key = ident(uri) if st.get("identity") == "uri_without_fragment" else uri.canonical
-                if key in seen:
-                    rejected.append({"uri": uri.raw, "stage": name, "reason": "duplicate URI"})
-                else:
-                    seen.add(key)
-                    keep.append(uri)
-            records=keep
+            if st.get("identity") == "semantic_server_profile":
+                records, duplicates = deduplicate_semantic(records)
+                rejected.extend({"uri": uri.raw, "stage": name, "reason": "duplicate semantic server profile"} for uri in duplicates)
+            else:
+                seen=set(); keep=[]
+                for uri in records:
+                    key = ident(uri) if st.get("identity") == "uri_without_fragment" else uri.canonical
+                    if key in seen:
+                        rejected.append({"uri": uri.raw, "stage": name, "reason": "duplicate URI"})
+                    else:
+                        seen.add(key); keep.append(uri)
+                records=keep
         elif name == "cluster_analysis":
             groups=defaultdict(list)
             for u in records: groups[cluster_key(u)].append(u)
@@ -169,7 +175,7 @@ def run(config_path, xray_binary):
                     report["clusters"].append({"key":key,"count":len(members)})
                     logger.info("{} similar configs share endpoint profile {}; testing independently", len(members), key)
         elif name == "xray_probe":
-            if not xray_binary or not Path(xray_binary).exists(): raise RuntimeError("Xray binary missing; set XRAY_BINARY or --xray-binary")
+            xray_binary = resolve_binary(xray_binary)
             if st.get("core", "xray") != "xray" or st.get("mode", "proxy_get") != "proxy_get" or st.get("request_mode", "keepalive") != "keepalive":
                 raise ValueError("This profile requires Xray + proxy_get + keepalive")
             legacy.PING_TYPE="proxy_get"; legacy.PING_MODE="keepalive"
@@ -211,6 +217,20 @@ def run(config_path, xray_binary):
                 if len(items)>=int(st.get("cluster_failure_warning",3)):
                     logger.warning("{} variants in cluster {} failed all probes", len(items), key)
             records=good
+        elif name in discover_plugins():
+            plugin = discover_plugins()[name]
+            context = {
+                "xray_binary": xray_binary,
+                "workers": st.get("workers", 4),
+                "timeout_seconds": st.get("timeout_seconds", 8),
+                "url": st.get("url", "https://telegram.org/"),
+                "accepted_status_codes": st.get("accepted_status_codes", [200, 301, 302, 403]),
+                "required": st.get("required", False),
+                "rejected": rejected,
+                "plugin_reports": report.setdefault("plugins", {}),
+            }
+            records = plugin(records, context)
+            report["plugins"].update(context.get("plugin_reports", {}))
         elif name == "stability_check":
             # Probe stage retries failed nodes; only nodes with a successful tunnel GET remain.
             pass

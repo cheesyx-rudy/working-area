@@ -18,7 +18,7 @@ stages:
     enabled: true
   - name: deduplicate
     enabled: true
-    identity: uri_without_fragment
+    identity: semantic_server_profile
   - name: cluster_analysis
     enabled: true
     group_by: scheme_host_port_transport_security
@@ -35,6 +35,13 @@ stages:
     retry_delay_seconds: 0.5
     workers: 8
     reject_unsupported_protocols: true
+  - name: telegram_site_check
+    enabled: true
+    url: https://telegram.org/
+    accepted_status_codes: [200, 301, 302, 403]
+    timeout_seconds: 8
+    workers: 4
+    required: false
   - name: stability_check
     enabled: true
     require_all_attempts_passed: true
