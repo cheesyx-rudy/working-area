@@ -41,3 +41,11 @@ class PipelineTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_regional_probe_is_enabled_and_checks_multiple_ru_targets(self):
+        import yaml
+        cfg = yaml.safe_load((Path(__file__).resolve().parents[1] / "configs" / "strict.yaml").read_text(encoding="utf-8"))
+        stage = next(item for item in cfg["stages"] if item["name"] == "regional_probe")
+        self.assertTrue(stage["enabled"])
+        self.assertGreaterEqual(len(stage["targets"]), 3)
+        self.assertGreaterEqual(stage["minimum_successes"], 2)

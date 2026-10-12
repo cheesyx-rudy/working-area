@@ -13,9 +13,6 @@ from domain import ProxyURI, ResultTest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "usual-sub" / "legacy"))
 import proxy_parser as legacy
-from normalizer import deduplicate_semantic
-from xray_manager import resolve_binary
-from modules.registry import discover as discover_plugins
 
 
 def load_config(path):
@@ -24,7 +21,7 @@ def load_config(path):
     if not isinstance(cfg, dict) or not isinstance(cfg.get("stages"), list):
         raise ValueError("YAML must contain a root mapping and stages list")
     names = [s.get("name") for s in cfg["stages"] if s.get("enabled", True)]
-    allowed = {"collect", "filter_unsupported", "normalize", "deduplicate", "cluster_analysis", "xray_probe", "stability_check", "telegram_site_check"} | set(discover_plugins())
+    allowed = {"collect", "filter_unsupported", "normalize", "deduplicate", "cluster_analysis", "xray_probe", "stability_check", "regional_probe"}
     unknown = set(names) - allowed
     if unknown:
         raise ValueError(f"Unknown stage(s): {', '.join(sorted(unknown))}")
@@ -154,18 +151,15 @@ def run(config_path, xray_binary):
         elif name == "normalize":
             records = [ProxyURI.parse(uri.raw.strip()) for uri in records if uri.raw.strip()]
         elif name == "deduplicate":
-            if st.get("identity") == "semantic_server_profile":
-                records, duplicates = deduplicate_semantic(records)
-                rejected.extend({"uri": uri.raw, "stage": name, "reason": "duplicate semantic server profile"} for uri in duplicates)
-            else:
-                seen=set(); keep=[]
-                for uri in records:
-                    key = ident(uri) if st.get("identity") == "uri_without_fragment" else uri.canonical
-                    if key in seen:
-                        rejected.append({"uri": uri.raw, "stage": name, "reason": "duplicate URI"})
-                    else:
-                        seen.add(key); keep.append(uri)
-                records=keep
+            seen=set(); keep=[]
+            for uri in records:
+                key = ident(uri) if st.get("identity") == "uri_without_fragment" else uri.canonical
+                if key in seen:
+                    rejected.append({"uri": uri.raw, "stage": name, "reason": "duplicate URI"})
+                else:
+                    seen.add(key)
+                    keep.append(uri)
+            records=keep
         elif name == "cluster_analysis":
             groups=defaultdict(list)
             for u in records: groups[cluster_key(u)].append(u)
@@ -175,7 +169,7 @@ def run(config_path, xray_binary):
                     report["clusters"].append({"key":key,"count":len(members)})
                     logger.info("{} similar configs share endpoint profile {}; testing independently", len(members), key)
         elif name == "xray_probe":
-            xray_binary = resolve_binary(xray_binary)
+            if not xray_binary or not Path(xray_binary).exists(): raise RuntimeError("Xray binary missing; set XRAY_BINARY or --xray-binary")
             if st.get("core", "xray") != "xray" or st.get("mode", "proxy_get") != "proxy_get" or st.get("request_mode", "keepalive") != "keepalive":
                 raise ValueError("This profile requires Xray + proxy_get + keepalive")
             legacy.PING_TYPE="proxy_get"; legacy.PING_MODE="keepalive"
@@ -217,22 +211,59 @@ def run(config_path, xray_binary):
                 if len(items)>=int(st.get("cluster_failure_warning",3)):
                     logger.warning("{} variants in cluster {} failed all probes", len(items), key)
             records=good
-        elif name in discover_plugins():
-            plugin = discover_plugins()[name]
-            context = {
-                "xray_binary": xray_binary,
-                "workers": st.get("workers", 4),
-                "timeout_seconds": st.get("timeout_seconds", 8),
-                "url": st.get("url", "https://telegram.org/"),
-                "accepted_status_codes": st.get("accepted_status_codes", [200, 301, 302, 403]),
-                "required": st.get("required", False),
-                "rejected": rejected,
-                "plugin_reports": report.setdefault("plugins", {}),
-            }
-            records = plugin(records, context)
-            report["plugins"].update(context.get("plugin_reports", {}))
+        elif name == "regional_probe":
+            # Probe Russian-facing resources THROUGH each candidate's Xray tunnel.
+            # This catches nodes that are reachable from GitHub but cannot reach
+            # important RU resources through their actual proxy path. It does NOT
+            # claim that the exit IP is Russian; split routing can spoof a single
+            # IP-check endpoint, so geography remains a separate signal.
+            targets = st.get("targets", [
+                "https://www.gosuslugi.ru/",
+                "https://yandex.ru/",
+                "https://www.rzd.ru/",
+            ])
+            required = max(1, min(len(targets), int(st.get("minimum_successes", 2))))
+            timeout = float(st.get("timeout_seconds", 10))
+            old_url = legacy.PING_URL
+            old_timeout = legacy.PING_TIMEOUT
+            old_codes = set(legacy.EXPECTED_STATUS_CODES)
+            keep = []
+            try:
+                legacy.PING_TIMEOUT = timeout
+                # Accept ordinary success and redirects; do not treat DNS/TLS/
+                # connection failures as success.
+                legacy.EXPECTED_STATUS_CODES = set(int(x) for x in st.get(
+                    "accepted_status_codes", list(range(200, 400))))
+                for uri in records:
+                    passed, failures = 0, []
+                    for target in targets:
+                        legacy.PING_URL = str(target)
+                        ok, reason = legacy._test_one_with_xray(uri.raw, xray_binary)
+                        if ok:
+                            passed += 1
+                        else:
+                            failures.append({"target": target, "reason": reason[:180]})
+                    if passed >= required:
+                        keep.append(uri)
+                    else:
+                        rejected.append({
+                            "uri": uri.raw, "stage": name,
+                            "reason": f"regional-targets: {passed}/{len(targets)} passed; required {required}",
+                            "failures": failures,
+                            "cluster": cluster_key(uri),
+                        })
+                records = keep
+                report["regional_probe"] = {
+                    "targets": list(targets), "minimum_successes": required,
+                    "passed": len(keep), "failed": before - len(keep),
+                    "limitation": "Tests RU-facing resource reachability through each proxy; does not prove Russian exit IP or every ISP's reachability.",
+                }
+            finally:
+                legacy.PING_URL = old_url
+                legacy.PING_TIMEOUT = old_timeout
+                legacy.EXPECTED_STATUS_CODES = old_codes
         elif name == "stability_check":
-            # Probe stage retries failed nodes; only nodes with a successful tunnel GET remain.
+            # The xray_probe stage already retries failed nodes; retained for compatibility.
             pass
         report["stages"].append({"name":name,"input":before,"output":len(records),"elapsed_seconds":round(time.monotonic()-t0,2)})
         logger.info("Stage {}: {} -> {}", name, before, len(records))
