@@ -1,24 +1,24 @@
 {
   "pipeline": "likvid-strict-subscription",
-  "started_at": "2026-10-11T22:55:48.465799+00:00",
+  "started_at": "2026-10-12T00:42:05.094799+00:00",
   "stages": [
     {
       "name": "collect",
       "input": 0,
       "output": 311,
-      "elapsed_seconds": 0.19
+      "elapsed_seconds": 0.33
     },
     {
       "name": "filter_unsupported",
       "input": 311,
       "output": 311,
-      "elapsed_seconds": 0.0
+      "elapsed_seconds": 0.01
     },
     {
       "name": "normalize",
       "input": 311,
       "output": 311,
-      "elapsed_seconds": 0.0
+      "elapsed_seconds": 0.01
     },
     {
       "name": "deduplicate",
@@ -35,13 +35,13 @@
     {
       "name": "xray_probe",
       "input": 311,
-      "output": 124,
-      "elapsed_seconds": 109.24
+      "output": 123,
+      "elapsed_seconds": 95.76
     },
     {
       "name": "stability_check",
-      "input": 124,
-      "output": 124,
+      "input": 123,
+      "output": 123,
       "elapsed_seconds": 0.0
     }
   ],
@@ -115,12 +115,12 @@
       "count": 12
     }
   ],
-  "accepted": 124,
-  "rejected": 187,
-  "finished_at": "2026-10-11T22:57:43.689947+00:00",
+  "accepted": 123,
+  "rejected": 188,
+  "finished_at": "2026-10-12T00:43:42.990702+00:00",
   "rejection_reasons": {
     "xray": 62,
-    "tunnel": 122,
+    "tunnel": 123,
     "xray-config": 3
   }
 }
