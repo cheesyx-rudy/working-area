@@ -1,100 +1,146 @@
 {
   "pipeline": "likvid-strict-subscription",
-  "started_at": "2026-10-12T07:53:44.467931+00:00",
+  "started_at": "2026-10-14T00:34:08.806043+00:00",
   "stages": [
     {
       "name": "collect",
       "input": 0,
-      "output": 836,
-      "elapsed_seconds": 0.21
+      "output": 303,
+      "elapsed_seconds": 0.15
     },
     {
       "name": "filter_unsupported",
-      "input": 836,
-      "output": 836,
+      "input": 303,
+      "output": 303,
       "elapsed_seconds": 0.01
     },
     {
       "name": "normalize",
-      "input": 836,
-      "output": 836,
+      "input": 303,
+      "output": 303,
       "elapsed_seconds": 0.01
     },
     {
       "name": "deduplicate",
-      "input": 836,
-      "output": 836,
+      "input": 303,
+      "output": 303,
       "elapsed_seconds": 0.0
     },
     {
       "name": "cluster_analysis",
-      "input": 836,
-      "output": 836,
+      "input": 303,
+      "output": 303,
       "elapsed_seconds": 0.0
     },
     {
       "name": "xray_probe",
-      "input": 836,
-      "output": 685,
-      "elapsed_seconds": 275.56
+      "input": 303,
+      "output": 281,
+      "elapsed_seconds": 80.91
+    },
+    {
+      "name": "regional_probe",
+      "input": 281,
+      "output": 160,
+      "elapsed_seconds": 2384.32
     },
     {
       "name": "stability_check",
-      "input": 685,
-      "output": 685,
+      "input": 160,
+      "output": 160,
       "elapsed_seconds": 0.0
     }
   ],
   "clusters": [
     {
-      "key": "vless|188.225.77.178|443|grpc|reality",
-      "count": 3
-    },
-    {
       "key": "vless|185.141.227.180|2053|xhttp|tls",
-      "count": 3
+      "count": 35
     },
     {
-      "key": "vless|151.236.114.253|443|tcp|reality",
-      "count": 3
-    },
-    {
-      "key": "vless|196.240.125.5|8443|tcp|tls",
-      "count": 3
-    },
-    {
-      "key": "vless|196.240.125.251|8443|tcp|tls",
-      "count": 3
-    },
-    {
-      "key": "vless|89.169.53.176|4443|tcp|reality",
-      "count": 4
-    },
-    {
-      "key": "vless|107.181.151.39|443|tcp|reality",
-      "count": 10
-    },
-    {
-      "key": "vless|107.181.151.241|443|tcp|reality",
+      "key": "vless|78.159.250.84|2053|xhttp|tls",
       "count": 9
     },
     {
-      "key": "vless|31.77.151.160|20324|tcp|reality",
+      "key": "vless|5.35.101.42|443|tcp|reality",
+      "count": 6
+    },
+    {
+      "key": "vless|78.159.250.84|8443|xhttp|tls",
       "count": 3
     },
     {
-      "key": "vless|45.81.33.194|443|tcp|reality",
+      "key": "vless|79.174.92.222|443|grpc|reality",
+      "count": 7
+    },
+    {
+      "key": "vless|193.233.220.203|8443|xhttp|reality",
+      "count": 3
+    },
+    {
+      "key": "vless|es3.h1cloud.net|25136|tcp|reality",
       "count": 4
     },
     {
-      "key": "vless|116.204.164.27|7443|ws|tls",
+      "key": "vless|147.45.60.160|8444|grpc|reality",
+      "count": 3
+    },
+    {
+      "key": "vless|finkawwwbroy5.qcloud.surf|20324|tcp|reality",
+      "count": 5
+    },
+    {
+      "key": "vless|sweedenqfds777.qcloud.surf|21221|tcp|reality",
+      "count": 3
+    },
+    {
+      "key": "vless|90.156.218.163|443|tcp|reality",
+      "count": 5
+    },
+    {
+      "key": "vless|31.59.216.141|443|tcp|reality",
+      "count": 3
+    },
+    {
+      "key": "vless|31.58.95.10|443|grpc|reality",
+      "count": 3
+    },
+    {
+      "key": "vless|37.221.92.145|443|tcp|reality",
       "count": 4
+    },
+    {
+      "key": "vless|13.143.186.27|443|grpc|reality",
+      "count": 4
+    },
+    {
+      "key": "vless|23.237.193.202|8443|tcp|reality",
+      "count": 3
+    },
+    {
+      "key": "vless|150.241.82.85|443|grpc|reality",
+      "count": 4
+    },
+    {
+      "key": "vless|nl1.aiage.work|443|tcp|reality",
+      "count": 3
     }
   ],
-  "accepted": 685,
-  "rejected": 151,
-  "finished_at": "2026-10-12T07:58:20.847549+00:00",
+  "regional_probe": {
+    "targets": [
+      "https://www.gosuslugi.ru/",
+      "https://yandex.ru/",
+      "https://www.rzd.ru/"
+    ],
+    "minimum_successes": 2,
+    "passed": 160,
+    "failed": 121,
+    "limitation": "Tests RU-facing resource reachability through each proxy; does not prove Russian exit IP or every ISP's reachability."
+  },
+  "accepted": 160,
+  "rejected": 143,
+  "finished_at": "2026-10-14T01:15:17.926959+00:00",
   "rejection_reasons": {
-    "tunnel": 151
+    "tunnel": 22,
+    "regional-targets": 121
   }
 }
